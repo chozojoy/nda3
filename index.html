@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>뉴스1 아카데미 3기 대시보드</title>
+    
+    <!-- 아이폰 앱 설정 (PWA) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="뉴스1 대시보드(3기)">
+    
+    <!-- 홈 화면 아이콘 (임시 로고 이미지) -->
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/5850/5850236.png">
+    
+    <!-- Tailwind CSS (디자인 프레임워크) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome (아이콘) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        .fade-in { animation: fadeIn 0.4s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        
+        /* 모바일 터치 최적화 */
+        select { -webkit-appearance: none; -moz-appearance: none; appearance: none; }
+        
+        #loading-overlay { display: none; }
+        #loading-overlay.active { display: flex; }
+
+        .min-w-table { min-width: 800px; }
+        @media (max-width: 768px) {
+            .attendance-scroll { -webkit-overflow-scrolling: touch; }
+        }
+        
+        /* 홈 화면 추가 시 상단 여백 보정 (iOS 상태바 대응) */
+        @supports (-webkit-touch-callout: none) {
+            body { padding-top: env(safe-area-inset-top); }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans p-3 md:p-8 min-h-screen relative">
+
+    <!-- 출석 업데이트 시 나타날 전체 로딩 화면 -->
+    <div id="loading-overlay" class="fixed inset-0 bg-white/70 backdrop-blur-sm z-50 flex-col items-center justify-center">
+        <i class="fa-solid fa-spinner fa-spin text-4xl text-blue-600 mb-4"></i>
+        <p class="text-slate-700 font-bold">데이터 저장 중...</p>
+    </div>
+
+    <!-- 수강생 상세 정보 팝업창 (모달) -->
+    <div id="student-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[60] hidden flex-col items-center justify-center p-4 fade-in">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden relative">
+            <button onclick="closeStudentModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-700 transition-colors z-10 p-2">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+            <div class="p-6 flex flex-col items-center border-b border-slate-100 bg-slate-50 relative">
+                <!-- 이미지 크게보기 기능 및 돋보기 호버 효과 -->
+                <div class="relative cursor-pointer group mb-3" onclick="openImageViewer()" title="이미지 크게 보기">
+                    <img id="modal-photo" src="" alt="프로필 사진" class="w-24 h-24 md:w-28 md:h-28 rounded-full object-cover border-4 border-white shadow-sm transition-transform duration-300 group-hover:scale-105">
+                    <div class="absolute inset-0 rounded-full bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 border-4 border-transparent group-hover:border-white">
+                        <i class="fa-solid fa-magnifying-glass-plus text-white text-2xl drop-shadow-md"></i>
+                    </div>
+                </div>
+                <h3 id="modal-name" class="text-xl font-bold text-slate-900"></h3>
+                <p id="modal-company-role" class="text-blue-600 text-sm font-semibold mt-1"></p>
+                <div id="modal-workshop-badge" class="mt-2 hidden">
+                    <span class="text-[10px] px-2 py-0.5 bg-purple-100 border border-purple-200 rounded-full text-purple-700 font-bold">워크숍 참석</span>
+                </div>
+            </div>
+            <div class="p-6 space-y-4 bg-white">
+                <div class="flex items-center gap-3 text-sm">
+                    <div class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center shrink-0">
+                        <i class="fa-solid fa-id-badge text-slate-400"></i>
+                    </div>
+                    <div>
+                        <p class="text-[10px] text-slate-400 font-semibold mb-0.5">고유번호 (ID)</p>
+                        <p id="modal-id" class="text-slate-700 font-medium"></p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 text-sm">
+                    <div class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center shrink-0">
+                        <i class="fa-solid fa-phone text-slate-400"></i>
+                    </div>
+                    <div>
+                        <p class="text-[10px] text-slate-400 font-semibold mb-0.5">연락처</p>
+                        <a id="modal-phone" href="" class="text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1.5"><i class="fa-solid fa-phone-flip text-[10px]"></i> <span id="modal-phone-text"></span></a>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 text-sm">
+                    <div class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center shrink-0">
+                        <i class="fa-solid fa-cake-candles text-slate-400"></i>
+                    </div>
+                    <div>
+                        <p class="text-[10px] text-slate-400 font-semibold mb-0.5">생년월일</p>
+                        <p id="modal-birth" class="text-slate-700"></p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3 text-sm pt-3 border-t border-slate-100">
+                    <div class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center shrink-0 mt-0.5">
+                        <i class="fa-solid fa-address-card text-slate-400"></i>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-[10px] text-slate-400 font-semibold mb-1">프로필 소개</p>
+                        <p id="modal-profile" class="text-slate-600 text-xs leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 이미지 확대 보기 모달 -->
+    <div id="image-viewer-modal" class="fixed inset-0 bg-black/90 z-[70] hidden flex-col items-center justify-center p-4 fade-in" onclick="closeImageViewer()">
+        <button onclick="closeImageViewer()" class="absolute top-4 right-4 md:top-6 md:right-6 text-white/70 hover:text-white transition-colors z-10 p-2">
+            <i class="fa-solid fa-xmark text-4xl"></i>
+        </button>
+        <img id="large-viewer-image" src="" alt="확대된 프로필 사진" class="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl" onclick="event.stopPropagation()">
+    </div>
+
+    <div class="max-w-7xl mx-auto space-y-4 md:space-y-6">
+        
+        <!-- 헤더 영역 -->
+        <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-slate-100">
+            <div>
+                <h1 class="text-xl md:text-2xl font-bold text-slate-900 flex items-center gap-3">
+                    <i class="fa-solid fa-book-open text-blue-600"></i>
+                    <span class="truncate">뉴스1 디지털자산 아카데미 3기</span>
+                </h1>
+                <p class="text-slate-500 text-sm mt-1">회원 통합 관리 대시보드</p>
+            </div>
+            
+            <div class="relative w-full md:w-64">
+                <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                <input 
+                    type="text" 
+                    id="searchInput"
+                    placeholder="이름, 소속 검색..." 
+                    class="pl-10 pr-4 py-2.5 bg-slate-100 border-none rounded-xl focus:ring-2 focus:ring-blue-500 outline-none w-full transition-all text-sm"
+                >
+            </div>
+        </header>
+
+        <!-- 탭 내비게이션 -->
+        <div class="flex overflow-x-auto no-scrollbar space-x-2 bg-white p-1.5 rounded-xl shadow-sm border border-slate-100 w-full md:w-fit">
+            <button onclick="switchTab('overview')" id="tab-overview" class="tab-btn whitespace-nowrap px-4 md:px-5 py-2 rounded-lg font-medium text-xs md:text-sm flex items-center gap-2 transition-colors bg-blue-50 text-blue-700">
+                <i class="fa-solid fa-calendar-days"></i> 요약
+            </button>
+            <button onclick="switchTab('master')" id="tab-master" class="tab-btn whitespace-nowrap px-4 md:px-5 py-2 rounded-lg font-medium text-xs md:text-sm flex items-center gap-2 transition-colors text-slate-600 hover:bg-slate-50">
+                <i class="fa-solid fa-users"></i> 명단
+            </button>
+            <button onclick="switchTab('attendance')" id="tab-attendance" class="tab-btn whitespace-nowrap px-4 md:px-5 py-2 rounded-lg font-medium text-xs md:text-sm flex items-center gap-2 transition-colors text-slate-600 hover:bg-slate-50">
+                <i class="fa-solid fa-user-check"></i> 출석체크
+            </button>
+            <button onclick="switchTab('workshop')" id="tab-workshop" class="tab-btn whitespace-nowrap px-4 md:px-5 py-2 rounded-lg font-medium text-xs md:text-sm flex items-center gap-2 transition-colors text-slate-600 hover:bg-slate-50">
+                <i class="fa-solid fa-campground"></i> 워크숍
+            </button>
+        </div>
+
+        <!-- 1. 요약 대시보드 뷰 -->
+        <div id="view-overview" class="view-section fade-in space-y-4 md:space-y-6">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                <div onclick="switchTab('master')" class="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row items-center gap-3 md:gap-4 text-center md:text-left cursor-pointer hover:border-blue-300 hover:shadow-md transition-all">
+                    <div class="p-3 bg-blue-50 text-blue-600 rounded-xl text-xl"><i class="fa-solid fa-users"></i></div>
+                    <div>
+                        <p class="text-[10px] md:text-sm font-medium text-slate-500">등록 인원</p>
+                        <h3 class="text-xl md:text-2xl font-bold text-slate-900"><span id="stat-total">0</span>명</h3>
+                    </div>
+                </div>
+                <div onclick="switchTab('attendance')" class="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row items-center gap-3 md:gap-4 text-center md:text-left cursor-pointer hover:border-blue-300 hover:shadow-md transition-all">
+                    <div class="p-3 bg-green-50 text-green-600 rounded-xl text-xl"><i class="fa-solid fa-user-check"></i></div>
+                    <div>
+                        <p class="text-[10px] md:text-sm font-medium text-slate-500">평균 출석률</p>
+                        <h3 class="text-xl md:text-2xl font-bold text-slate-900"><span id="stat-avg">0</span>%</h3>
+                    </div>
+                </div>
+                <div onclick="switchTab('attendance')" class="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row items-center gap-3 md:gap-4 text-center md:text-left cursor-pointer hover:border-blue-300 hover:shadow-md transition-all">
+                    <div class="p-3 bg-amber-50 text-amber-600 rounded-xl text-xl"><i class="fa-solid fa-award"></i></div>
+                    <div>
+                        <p class="text-[10px] md:text-sm font-medium text-slate-500">개근 인원</p>
+                        <h3 class="text-xl md:text-2xl font-bold text-slate-900"><span id="stat-perfect">0</span>명</h3>
+                    </div>
+                </div>
+                <div onclick="switchTab('workshop')" class="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row items-center gap-3 md:gap-4 text-center md:text-left cursor-pointer hover:border-blue-300 hover:shadow-md transition-all">
+                    <div class="p-3 bg-purple-50 text-purple-600 rounded-xl text-xl"><i class="fa-solid fa-campground"></i></div>
+                    <div>
+                        <p class="text-[10px] md:text-sm font-medium text-slate-500">워크숍 참석</p>
+                        <h3 class="text-xl md:text-2xl font-bold text-slate-900"><span id="stat-workshop">0</span>명</h3>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 주차별 출석 현황 영역 -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div class="p-5 md:p-6 border-b border-slate-100 flex justify-between items-center">
+                    <h3 class="text-base md:text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <i class="fa-solid fa-chart-line text-blue-600"></i> 주차별 출석 현황
+                    </h3>
+                </div>
+                <div class="p-4 md:p-6 overflow-x-auto pb-6">
+                    <div class="flex gap-3 md:gap-4 min-w-max" id="weekly-stats-list">
+                        <!-- JS에서 동적 렌더링 됨 -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div class="p-5 md:p-6 border-b border-slate-100 flex justify-between items-center">
+                    <h3 class="text-base md:text-lg font-bold text-slate-900">수강생 카드 명단</h3>
+                </div>
+                <div class="p-4 md:p-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-6" id="student-card-list">
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. 수강생 명단 (Master) 뷰 -->
+        <div id="view-master" class="view-section hidden fade-in bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs md:text-sm whitespace-nowrap">
+                    <thead class="bg-slate-50 border-b border-slate-200 text-slate-600">
+                        <tr>
+                            <th class="px-4 md:px-6 py-4 font-semibold">고유번호</th>
+                            <th class="px-4 md:px-6 py-4 font-semibold">사진 / 성함</th>
+                            <th class="px-4 md:px-6 py-4 font-semibold">소속 및 직함</th>
+                            <th class="px-4 md:px-6 py-4 font-semibold">연락처</th>
+                            <th class="px-4 md:px-6 py-4 font-semibold">생년월일</th>
+                            <th class="px-4 md:px-6 py-4 font-semibold">프로필</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100" id="master-tbody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 3. 출석 관리 (Attendance) 뷰 -->
+        <div id="view-attendance" class="view-section hidden fade-in bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <!-- 출석 조회 필터 바 -->
+            <div class="p-4 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center gap-3">
+                <span class="text-sm font-bold text-slate-700 flex items-center gap-1.5"><i class="fa-solid fa-filter text-blue-500"></i> 조회 필터:</span>
+                <select id="filter-week" class="text-xs md:text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 font-medium bg-white">
+                    <option value="all">전체 기준 (선택 안함)</option>
+                    <option value="0">1주차</option>
+                    <option value="1">2주차</option>
+                    <option value="2">3주차</option>
+                    <option value="3">4주차</option>
+                    <option value="4">5주차</option>
+                    <option value="5">6주차</option>
+                    <option value="6">7주차</option>
+                    <option value="7">8주차</option>
+                    <option value="8">9주차</option>
+                    <option value="9">10주차</option>
+                    <option value="10">11주차</option>
+                    <option value="11">12주차</option>
+                    <option value="workshop">워크숍</option>
+                </select>
+                <select id="filter-status" disabled class="text-xs md:text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 font-medium bg-white disabled:bg-slate-100 disabled:text-slate-400">
+                    <option value="all">전체 상태</option>
+                    <option value="출석" class="opt-att">출석</option>
+                    <option value="결석" class="opt-att">결석</option>
+                    <option value="지각" class="opt-att">지각</option>
+                    <option value="" class="opt-att">미입력(-)</option>
+                    <option value="참석" class="opt-ws hidden">참석</option>
+                    <option value="참석(대참)" class="opt-ws hidden">참석(대참)</option>
+                    <option value="불참" class="opt-ws hidden">불참</option>
+                </select>
+                <div class="text-xs font-semibold text-slate-500 ml-auto bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm" id="filter-result-count">
+                    명단 대기중
+                </div>
+            </div>
+
+            <div class="overflow-x-auto attendance-scroll pb-4">
+                <table class="w-full text-center text-xs md:text-sm whitespace-nowrap min-w-table">
+                    <thead class="bg-slate-50 border-b border-slate-200 text-slate-600">
+                        <tr>
+                            <th class="px-4 py-4 font-semibold text-center sticky left-0 bg-slate-50 border-r border-slate-200 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">수강생</th>
+                            <th class="px-2 py-4 font-semibold">1주</th>
+                            <th class="px-2 py-4 font-semibold">2주</th>
+                            <th class="px-2 py-4 font-semibold">3주</th>
+                            <th class="px-2 py-4 font-semibold">4주</th>
+                            <th class="px-2 py-4 font-semibold">5주</th>
+                            <th class="px-2 py-4 font-semibold">6주</th>
+                            <th class="px-2 py-4 font-semibold">7주</th>
+                            <th class="px-2 py-4 font-semibold">8주</th>
+                            <th class="px-2 py-4 font-semibold">9주</th>
+                            <th class="px-2 py-4 font-semibold">10주</th>
+                            <th class="px-2 py-4 font-semibold">11주</th>
+                            <th class="px-2 py-4 font-semibold">12주</th>
+                            <th class="px-3 py-4 font-semibold bg-purple-50 text-purple-800">워크숍</th>
+                            <th class="px-3 py-4 font-semibold bg-indigo-50 text-indigo-800">합계</th>
+                            <th class="px-4 py-4 font-bold bg-blue-50 text-blue-800">출석률</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100" id="attendance-tbody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 4. 워크숍 (Workshop) 뷰 -->
+        <div id="view-workshop" class="view-section hidden fade-in space-y-4 md:space-y-6">
+            <div class="bg-purple-50 rounded-2xl shadow-sm border border-purple-100 p-5 md:p-6 flex items-center justify-between">
+                <div>
+                    <h3 class="text-base md:text-lg font-bold text-purple-900 flex items-center gap-2">
+                        <i class="fa-solid fa-campground text-purple-600"></i> 워크숍 참석자 명단
+                    </h3>
+                    <p class="text-xs md:text-sm text-purple-700 mt-1">워크숍에 참석한 수강생 목록입니다.</p>
+                </div>
+                <div class="text-right">
+                    <span class="text-2xl md:text-3xl font-black text-purple-600" id="workshop-only-count">0</span>
+                    <span class="text-sm font-bold text-purple-800">명</span>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div class="p-4 md:p-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-6" id="workshop-card-list">
+                    <!-- JS에서 동적 렌더링 됨 -->
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // 뉴스1 아카데미 3기 전용 스프레드시트 연동
+        const SPREADSHEET_ID = '1hJfZE3gQ_VDOMlpfQU_XwCVfPELgadFxta_OaI762LE'; 
+        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw-hbv-ovKRg17_y9YGbpTqPJR8f-6srmMneOC9OHrhSvC-YbZkqWACWX4G27Rz2JmuqQ/exec';
+        
+        let ALL_STUDENTS = [];
+        const TOTAL_WEEKS = 12;
+        let isAttendanceAuthenticated = false;
+
+        function formatDateKor(dateVal) {
+            if (!dateVal) return '-';
+            const str = String(dateVal).trim();
+            const dateMatch = str.match(/Date\((\d+),\s*(\d+),\s*(\d+)/);
+            if (dateMatch) {
+                return `${dateMatch[1]}년 ${String(parseInt(dateMatch[2]) + 1).padStart(2, '0')}월 ${String(dateMatch[3]).padStart(2, '0')}일`;
+            }
+            const parts = str.split(/[-./]/);
+            if (parts.length >= 3) {
+                return `${parts[0]}년 ${parts[1].padStart(2, '0')}월 ${parts[2].padStart(2, '0')}일`;
+            }
+            return str;
+        }
+
+        function getDirectImageUrl(url) {
+            if (!url || String(url).trim() === '') return 'https://via.placeholder.com/150?text=No+Photo';
+            const urlStr = String(url).trim();
+            const match = urlStr.match(/[-\w]{25,}/);
+            if (match) return `https://lh3.googleusercontent.com/d/${match[0]}`;
+            return urlStr;
+        }
+
+        function fetchSheetDataJSONP(sheetName, callbackName) {
+            return new Promise((resolve, reject) => {
+                window[callbackName] = function(response) {
+                    if (response.status === 'error') {
+                        reject(new Error(response.errors[0].detailed_message || response.errors[0].message));
+                        return;
+                    }
+                    resolve(response.table.rows);
+                    delete window[callbackName];
+                };
+                const script = document.createElement('script');
+                script.src = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json;responseHandler:${callbackName}&sheet=${sheetName}`;
+                script.onerror = () => reject(new Error(`네트워크 차단 또는 [${sheetName}] 시트를 찾을 수 없습니다.`));
+                document.head.appendChild(script);
+            });
+        }
+
+        function updateAttendance(id, week, status) {
+            if (!APPS_SCRIPT_URL) return;
+
+            // 비밀번호 확인 로직 (한 번 인증되면 새로고침 전까지 계속 수정 가능)
+            if (!isAttendanceAuthenticated) {
+                const password = prompt("출석 정보를 수정하려면 비밀번호를 입력하세요.");
+                if (password === '1006') {
+                    isAttendanceAuthenticated = true;
+                    alert("인증되었습니다. 이제 출석을 수정할 수 있습니다.");
+                } else {
+                    alert("비밀번호가 일치하지 않습니다.");
+                    // 변경된 select 값을 원래 데이터 상태로 되돌리기 위해 화면 다시 그리기
+                    renderDashboard(document.getElementById('searchInput').value);
+                    return;
+                }
+            }
+
+            document.getElementById('loading-overlay').classList.add('active');
+
+            const callbackName = 'updateCallback_' + new Date().getTime();
+            window[callbackName] = function(response) {
+                delete window[callbackName];
+                if(response.success) {
+                    initializeData(); 
+                } else {
+                    alert("업데이트 실패: " + response.message);
+                    document.getElementById('loading-overlay').classList.remove('active');
+                    renderDashboard(document.getElementById('searchInput').value);
+                }
+            };
+
+            const script = document.createElement('script');
+            script.src = `${APPS_SCRIPT_URL}?id=${id}&week=${week}&status=${encodeURIComponent(status)}&callback=${callbackName}`;
+            script.onerror = () => {
+                alert("서버 연결 실패. URL이나 권한을 확인해주세요.");
+                document.getElementById('loading-overlay').classList.remove('active');
+                renderDashboard(document.getElementById('searchInput').value);
+            };
+            document.head.appendChild(script);
+        }
+
+        async function initializeData() {
+            if (!SPREADSHEET_ID) return;
+
+            if (ALL_STUDENTS.length === 0) {
+                document.getElementById('stat-total').innerHTML = '<i class="fa-solid fa-spinner fa-spin text-sm"></i>';
+                document.getElementById('master-tbody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-slate-500 text-xs md:text-sm">로딩 중...</td></tr>`;
+                document.getElementById('attendance-tbody').innerHTML = `<tr><td colspan="16" class="px-6 py-12 text-center text-slate-500 text-xs md:text-sm">로딩 중...</td></tr>`;
+                document.getElementById('student-card-list').innerHTML = `<div class="col-span-full py-12 text-center text-slate-400 text-xs md:text-sm">데이터 로딩 중...</div>`;
+            }
+
+            try {
+                const [masterRows, attendanceRows] = await Promise.all([
+                    fetchSheetDataJSONP('Master', 'handleMasterCallback'),
+                    fetchSheetDataJSONP('Attendance', 'handleAttendanceCallback')
+                ]);
+
+                const masterMap = {};
+
+                masterRows.forEach(row => {
+                    const id = row.c[0]?.v;
+                    const name = row.c[1]?.v; 
+                    if (!id || id === '고유번호' || !name || String(name).trim() === '') return; 
+
+                    masterMap[id] = {
+                        id: id,
+                        name: String(name).trim(),
+                        company: row.c[2]?.v || '',
+                        role: row.c[3]?.v || '',
+                        phone: row.c[4]?.v || '',
+                        birth: formatDateKor(row.c[5]?.f || row.c[5]?.v), 
+                        workshop: row.c[6]?.v ? String(row.c[6]?.v).trim() : '불참', 
+                        photo: getDirectImageUrl(row.c[7]?.v), 
+                        profile: row.c[8]?.v ? String(row.c[8]?.v).replace(/\n/g, '<br>') : '-', 
+                        attendance: []
+                    };
+                });
+
+                attendanceRows.forEach(row => {
+                    const id = row.c[0]?.v;
+                    if (!id || !masterMap[id] || id === '고유번호') return;
+
+                    const att = [];
+                    for (let i = 2; i <= 13; i++) {
+                        const status = row.c[i]?.v;
+                        att.push(status ? String(status).trim() : '');
+                    }
+                    masterMap[id].attendance = att;
+                });
+
+                ALL_STUDENTS = Object.values(masterMap);
+                renderDashboard(document.getElementById('searchInput').value);
+            } catch (error) {
+                console.error("데이터 로드 에러:", error);
+                if (ALL_STUDENTS.length === 0) {
+                    document.getElementById('master-tbody').innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-red-500 text-xs">데이터 로드 실패</td></tr>`;
+                }
+            } finally {
+                document.getElementById('loading-overlay').classList.remove('active');
+            }
+        } 
+
+        function getAttendanceStats(attendanceArray, passedWeeks) {
+            const presents = attendanceArray.filter(s => s === '출석').length;
+            const lates = attendanceArray.filter(s => s === '지각').length;
+            const absents = attendanceArray.filter(s => s === '결석').length;
+            
+            // 누적 출석률: 진행된 주차(데이터가 있는 주차)를 분모로 사용. 데이터가 전혀 없으면 기본값 12주(TOTAL_WEEKS)
+            const baseWeeks = passedWeeks > 0 ? passedWeeks : TOTAL_WEEKS;
+            const rate = ((presents / baseWeeks) * 100).toFixed(1);
+            
+            return { presents, lates, absents, rate };
+        }
+
+        function getStatusColor(status) {
+            switch(status) {
+                case '출석': return 'bg-green-100 text-green-800 border-green-200';
+                case '지각': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+                case '결석': return 'bg-red-100 text-red-800 border-red-200';
+                default: return 'bg-gray-100 text-gray-500 border-gray-200';
+            }
+        }
+
+        function renderDashboard(searchTerm = '') {
+            const filtered = ALL_STUDENTS.filter(s => 
+                s.name.includes(searchTerm) || 
+                s.company.includes(searchTerm) || 
+                s.id.includes(searchTerm)
+            );
+
+            // 1. 진행된 주차 수 계산 (전체 학생 중 누군가 출석/지각/결석 데이터가 하나라도 있는 주차 확인)
+            let passedWeeks = 0;
+            for (let w = 0; w < TOTAL_WEEKS; w++) {
+                const hasDataThisWeek = ALL_STUDENTS.some(s => ['출석', '지각', '결석'].includes(s.attendance[w]));
+                if (hasDataThisWeek) passedWeeks++;
+            }
+
+            let totalRate = 0, perfectAttendance = 0, workshopCount = 0;
+            if (ALL_STUDENTS.length > 0) {
+                ALL_STUDENTS.forEach(s => {
+                    const stats = getAttendanceStats(s.attendance, passedWeeks);
+                    totalRate += parseFloat(stats.rate);
+                    
+                    // 개근 인원: 진행된 주차가 있고, 그 주차 수만큼 모두 출석했을 경우만 카운트
+                    if (passedWeeks > 0 && stats.presents === passedWeeks) perfectAttendance++;
+                    
+                    if (s.workshop === '참석' || s.workshop === '참석(대참)') workshopCount++;
+                });
+                document.getElementById('stat-total').innerText = ALL_STUDENTS.length;
+                document.getElementById('stat-avg').innerText = (totalRate / ALL_STUDENTS.length).toFixed(1);
+                document.getElementById('stat-perfect').innerText = perfectAttendance;
+                document.getElementById('stat-workshop').innerText = workshopCount;
+
+                // --- 주차별 출석 현황 렌더링 ---
+                let weeklyStatsHtml = '';
+                const totalStudentsCount = ALL_STUDENTS.length;
+
+                for (let w = 0; w < TOTAL_WEEKS; w++) {
+                    let weekPresents = 0;
+                    let weekLates = 0;
+                    let weekAbsents = 0;
+
+                    ALL_STUDENTS.forEach(s => {
+                        const status = s.attendance[w];
+                        if (status === '출석') weekPresents++;
+                        else if (status === '지각') weekLates++;
+                        else if (status === '결석') weekAbsents++;
+                    });
+
+                    const hasData = (weekPresents + weekLates + weekAbsents) > 0;
+                    // 출석률: (출석인원 / 전체등록인원) * 100
+                    const weekRate = hasData ? Math.round((weekPresents / totalStudentsCount) * 100) : 0;
+                    
+                    let textColor = 'text-blue-600';
+                    let bgColor = 'bg-blue-500';
+                    if (weekRate < 80 && weekRate >= 50) { textColor = 'text-amber-500'; bgColor = 'bg-amber-400'; }
+                    else if (weekRate < 50) { textColor = 'text-red-500'; bgColor = 'bg-red-400'; }
+                    
+                    weeklyStatsHtml += `
+                        <div class="w-28 md:w-36 bg-slate-50 border border-slate-100 rounded-xl p-3 md:p-4 flex flex-col gap-1.5 md:gap-2 shrink-0 shadow-sm transition-all hover:shadow-md">
+                            <h4 class="text-[11px] md:text-sm font-bold text-slate-600">${w + 1}주차</h4>
+                            ${hasData ? `
+                                <div class="flex items-end justify-between mt-1">
+                                    <span class="text-xl md:text-2xl font-black ${textColor}">${weekRate}%</span>
+                                    <span class="text-[10px] md:text-xs text-slate-500 font-medium mb-1" title="출석 인원">${weekPresents}명</span>
+                                </div>
+                                <div class="w-full bg-slate-200 rounded-full h-1.5 md:h-2 mt-1">
+                                    <div class="h-1.5 md:h-2 rounded-full ${bgColor}" style="width: ${weekRate}%"></div>
+                                </div>
+                                <div class="text-[9px] md:text-[10px] mt-1 flex justify-between font-medium">
+                                    <span class="text-yellow-600">지각 ${weekLates}</span>
+                                    <span class="text-red-500">결석 ${weekAbsents}</span>
+                                </div>
+                            ` : `
+                                <div class="flex-1 flex items-center justify-center text-slate-400 text-[10px] md:text-xs py-4 md:py-5 font-medium border border-dashed border-slate-200 rounded-lg mt-1">
+                                    미입력
+                                </div>
+                            `}
+                        </div>
+                    `;
+                }
+                const weeklyContainer = document.getElementById('weekly-stats-list');
+                if (weeklyContainer) weeklyContainer.innerHTML = weeklyStatsHtml;
+
+            } else {
+                const weeklyContainer = document.getElementById('weekly-stats-list');
+                if (weeklyContainer) weeklyContainer.innerHTML = '<div class="text-slate-400 text-sm">데이터 없음</div>';
+            }
+
+            const cardHtml = filtered.map(s => {
+                // 출석 현황 점(Dot) 생성 로직
+                const attendanceDots = s.attendance.map((status, idx) => {
+                    let dotColor = 'bg-slate-200'; // 기본: 미입력
+                    if (status === '출석') dotColor = 'bg-green-400';
+                    else if (status === '지각') dotColor = 'bg-amber-400';
+                    else if (status === '결석') dotColor = 'bg-red-400';
+                    return `<div class="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full ${dotColor}" title="${idx + 1}주차: ${status || '미입력'}"></div>`;
+                }).join('');
+
+                return `
+                    <div onclick="openStudentModal('${s.id}')" class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center text-center space-y-2 hover:shadow-md hover:border-blue-300 cursor-pointer transition-all duration-300">
+                        <img src="${s.photo}" alt="${s.name}" class="w-16 h-16 md:w-24 md:h-24 rounded-full object-cover border-2 md:border-4 border-white shadow-sm" onerror="this.src='https://via.placeholder.com/150?text=Error'">
+                        <div class="w-full truncate">
+                            <h4 class="font-bold text-slate-900 text-sm md:text-lg truncate">${s.name}</h4>
+                            <p class="text-blue-600 text-[10px] md:text-sm font-semibold truncate">${s.company}</p>
+                            <p class="text-slate-500 text-[9px] md:text-xs truncate">${s.role}</p>
+                            
+                            <!-- 미니 출석 현황 (12주) -->
+                            <div class="flex justify-center gap-0.5 md:gap-1 mt-2">
+                                ${attendanceDots}
+                            </div>
+                            
+                            <!-- 카드 하단에 전화걸기 버튼 추가 (이벤트 전파 방지 적용) -->
+                            <a href="tel:${s.phone}" onclick="event.stopPropagation()" class="inline-flex items-center gap-1.5 mt-2.5 text-[10px] md:text-xs text-slate-600 hover:text-blue-600 bg-white border border-slate-200 px-3 py-1.5 rounded-full transition-colors shadow-sm">
+                                <i class="fa-solid fa-phone"></i> ${s.phone}
+                            </a>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            document.getElementById('student-card-list').innerHTML = cardHtml || '<div class="col-span-full py-12 text-center text-slate-400 text-xs">결과 없음</div>';
+
+            // --- 워크숍 전용 탭 렌더링 ---
+            const workshopAttendees = filtered.filter(s => s.workshop === '참석' || s.workshop === '참석(대참)');
+            const workshopCountEl = document.getElementById('workshop-only-count');
+            if (workshopCountEl) workshopCountEl.innerText = workshopAttendees.length;
+
+            const workshopCardHtml = workshopAttendees.map(s => {
+                // 출석 현황 점(Dot) 생성 로직 (워크숍 탭 카드용)
+                const attendanceDots = s.attendance.map((status, idx) => {
+                    let dotColor = 'bg-slate-200/70'; // 기본: 미입력
+                    if (status === '출석') dotColor = 'bg-green-400';
+                    else if (status === '지각') dotColor = 'bg-amber-400';
+                    else if (status === '결석') dotColor = 'bg-red-400';
+                    return `<div class="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full ${dotColor}" title="${idx + 1}주차: ${status || '미입력'}"></div>`;
+                }).join('');
+
+                return `
+                    <div onclick="openStudentModal('${s.id}')" class="bg-purple-50/30 p-4 rounded-2xl border border-purple-100 flex flex-col items-center text-center space-y-2 hover:shadow-md hover:border-purple-300 cursor-pointer transition-all duration-300 relative overflow-hidden">
+                        <div class="absolute top-0 right-0 bg-purple-500 text-white text-[9px] font-bold px-3 py-1 rounded-bl-xl shadow-sm">${s.workshop}</div>
+                        <img src="${s.photo}" alt="${s.name}" class="w-16 h-16 md:w-24 md:h-24 rounded-full object-cover border-2 md:border-4 border-white shadow-sm" onerror="this.src='https://via.placeholder.com/150?text=Error'">
+                        <div class="w-full truncate">
+                            <h4 class="font-bold text-slate-900 text-sm md:text-lg truncate">${s.name}</h4>
+                            <p class="text-purple-700 text-[10px] md:text-sm font-semibold truncate">${s.company}</p>
+                            <p class="text-slate-500 text-[9px] md:text-xs truncate">${s.role}</p>
+                            
+                            <!-- 미니 출석 현황 (12주) -->
+                            <div class="flex justify-center gap-0.5 md:gap-1 mt-2">
+                                ${attendanceDots}
+                            </div>
+                            
+                            <a href="tel:${s.phone}" onclick="event.stopPropagation()" class="inline-flex items-center gap-1.5 mt-2.5 text-[10px] md:text-xs text-purple-600 hover:text-purple-800 bg-white border border-purple-200 px-3 py-1.5 rounded-full transition-colors shadow-sm">
+                                <i class="fa-solid fa-phone"></i> ${s.phone}
+                            </a>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            const workshopCardListEl = document.getElementById('workshop-card-list');
+            if (workshopCardListEl) {
+                workshopCardListEl.innerHTML = workshopCardHtml || '<div class="col-span-full py-12 text-center text-slate-400 text-xs">해당되는 워크숍 참석자가 없습니다.</div>';
+            }
+
+            const masterHtml = filtered.map(s => `
+                <tr class="hover:bg-slate-50 transition-colors">
+                    <td class="px-4 md:px-6 py-4 text-slate-500 font-medium">${s.id}</td>
+                    <td class="px-4 md:px-6 py-4">
+                        <div class="flex items-center gap-3">
+                            <img src="${s.photo}" alt="${s.name}" class="w-8 h-8 md:w-10 md:h-10 rounded-full object-cover border border-slate-200" onerror="this.src='https://via.placeholder.com/150?text=Error'" />
+                            <span class="font-bold text-slate-900 text-xs md:text-sm">${s.name}</span>
+                        </div>
+                    </td>
+                    <td class="px-4 md:px-6 py-4">
+                        <div class="flex flex-col">
+                            <span class="font-medium text-slate-800 text-xs md:text-sm">${s.company}</span>
+                            <span class="text-[10px] md:text-xs text-slate-500">${s.role}</span>
+                        </div>
+                    </td>
+                    <td class="px-4 md:px-6 py-4 font-mono text-xs md:text-sm">
+                        <a href="tel:${s.phone}" class="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1.5 w-max">
+                            <i class="fa-solid fa-phone text-[10px]"></i> ${s.phone}
+                        </a>
+                    </td>
+                    <td class="px-4 md:px-6 py-4 text-slate-600 text-xs md:text-sm">${s.birth}</td>
+                    <td class="px-4 md:px-6 py-4 text-slate-600 text-[10px] md:text-xs min-w-[200px] max-w-xs whitespace-normal text-left leading-relaxed">${s.profile}</td>
+                </tr>
+            `).join('');
+            document.getElementById('master-tbody').innerHTML = masterHtml || `<tr><td colspan="6" class="px-6 py-12 text-center text-slate-500 text-xs">데이터 없음</td></tr>`;
+
+            // --- 출석 탭 전용 필터 적용 ---
+            let attendanceFilteredStudents = filtered;
+            const filterWeekEl = document.getElementById('filter-week');
+            const filterStatusEl = document.getElementById('filter-status');
+            
+            if (filterWeekEl && filterStatusEl) {
+                const filterWeek = filterWeekEl.value;
+                const filterStatus = filterStatusEl.value;
+                
+                // 특정 주차/상태가 선택된 경우에만 필터링 수행
+                if (filterWeek !== 'all' && filterStatus !== 'all') {
+                    attendanceFilteredStudents = filtered.filter(s => {
+                        if (filterWeek === 'workshop') {
+                            return s.workshop === filterStatus;
+                        } else {
+                            const weekIdx = parseInt(filterWeek);
+                            return s.attendance[weekIdx] === filterStatus;
+                        }
+                    });
+                }
+                
+                // 필터링 결과 인원 업데이트
+                document.getElementById('filter-result-count').innerHTML = `총 <span class="text-blue-600 font-bold text-sm">${attendanceFilteredStudents.length}</span>명 조회됨`;
+            }
+
+            const attendanceHtml = attendanceFilteredStudents.map(s => {
+                const stats = getAttendanceStats(s.attendance, passedWeeks);
+                const statusHtml = s.attendance.map((status, idx) => {
+                    const weekNum = idx + 1;
+                    return `
+                        <td class="px-1 py-2">
+                            <select onchange="updateAttendance('${s.id}', ${weekNum}, this.value)" 
+                                    class="w-full min-w-[55px] text-[10px] md:text-xs font-semibold border rounded px-1 py-1.5 cursor-pointer outline-none appearance-none text-center ${getStatusColor(status)}">
+                                <option value="" ${status === '' ? 'selected' : ''}>-</option>
+                                <option value="출석" ${status === '출석' ? 'selected' : ''}>출석</option>
+                                <option value="지각" ${status === '지각' ? 'selected' : ''}>지각</option>
+                                <option value="결석" ${status === '결석' ? 'selected' : ''}>결석</option>
+                            </select>
+                        </td>
+                    `;
+                }).join('');
+
+                const workshopColor = (s.workshop === '참석' || s.workshop === '참석(대참)') 
+                    ? 'bg-purple-100 text-purple-800 border-purple-200' 
+                    : 'bg-slate-100 text-slate-500 border-slate-200';
+
+                return `
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="p-2 text-center sticky left-0 bg-white border-r border-slate-100 z-10 shadow-[1px_0_3px_rgba(0,0,0,0.1)]">
+                            <div class="flex flex-col justify-center items-center w-20 h-20 md:w-24 md:h-24 mx-auto bg-slate-50 border border-slate-200 rounded-xl p-1 shadow-sm">
+                                <span class="font-bold text-slate-900 text-xs md:text-sm w-full truncate">${s.name}</span>
+                                <div class="w-full mt-1 md:mt-1.5 border-t border-slate-200 pt-1 md:pt-1.5 flex flex-col gap-0.5">
+                                    <span class="text-[9px] md:text-[10px] text-blue-600 font-bold w-full truncate leading-none">${s.company}</span>
+                                    <span class="text-[9px] md:text-[10px] text-slate-500 w-full truncate leading-none">${s.role}</span>
+                                </div>
+                            </div>
+                        </td>
+                        ${statusHtml}
+                        <td class="px-3 py-3 bg-purple-50/20">
+                            <span class="inline-flex items-center justify-center px-2 py-0.5 rounded text-[9px] md:text-xs font-semibold border ${workshopColor}">${s.workshop}</span>
+                        </td>
+                        <td class="px-3 py-3 bg-indigo-50/20 text-xs md:text-sm font-bold text-indigo-700">${stats.presents}회</td>
+                        <td class="px-4 py-3 bg-blue-50/20 text-xs md:text-sm font-bold text-blue-700">${stats.rate}%</td>
+                    </tr>
+                `;
+            }).join('');
+            document.getElementById('attendance-tbody').innerHTML = attendanceHtml || `<tr><td colspan="16" class="px-6 py-12 text-center text-slate-500 text-xs">데이터 없음</td></tr>`;
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`view-${tabId}`).classList.remove('hidden');
+
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('bg-blue-50', 'text-blue-700');
+                btn.classList.add('text-slate-600', 'hover:bg-slate-50');
+            });
+            const activeBtn = document.getElementById(`tab-${tabId}`);
+            activeBtn.classList.remove('text-slate-600', 'hover:bg-slate-50');
+            activeBtn.classList.add('bg-blue-50', 'text-blue-700');
+        }
+
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            renderDashboard(e.target.value);
+        });
+
+        // --- 출석 필터 이벤트 리스너 추가 ---
+        document.getElementById('filter-week').addEventListener('change', function(e) {
+            const weekVal = e.target.value;
+            const statusEl = document.getElementById('filter-status');
+            
+            if (weekVal === 'all') {
+                statusEl.value = 'all';
+                statusEl.disabled = true;
+            } else {
+                statusEl.disabled = false;
+                const attOpts = statusEl.querySelectorAll('.opt-att');
+                const wsOpts = statusEl.querySelectorAll('.opt-ws');
+                
+                // 워크숍 선택 시 상태 옵션 변경 (참석, 불참)
+                if (weekVal === 'workshop') {
+                    attOpts.forEach(opt => opt.classList.add('hidden'));
+                    wsOpts.forEach(opt => opt.classList.remove('hidden'));
+                    if(!['all', '참석', '참석(대참)', '불참'].includes(statusEl.value)) statusEl.value = 'all';
+                } 
+                // 일반 주차 선택 시 상태 옵션 변경 (출석, 결석 등)
+                else {
+                    attOpts.forEach(opt => opt.classList.remove('hidden'));
+                    wsOpts.forEach(opt => opt.classList.add('hidden'));
+                    if(!['all', '출석', '결석', '지각', ''].includes(statusEl.value)) statusEl.value = 'all';
+                }
+            }
+            // 필터 변경 후 테이블 다시 렌더링
+            renderDashboard(document.getElementById('searchInput').value);
+        });
+
+        document.getElementById('filter-status').addEventListener('change', () => {
+            renderDashboard(document.getElementById('searchInput').value);
+        });
+
+        // --- 팝업 모달창 제어 함수 ---
+        function openStudentModal(id) {
+            const student = ALL_STUDENTS.find(s => s.id === id);
+            if (!student) return;
+
+            // 데이터 채워넣기
+            document.getElementById('modal-photo').src = student.photo;
+            document.getElementById('modal-name').innerText = student.name;
+            document.getElementById('modal-company-role').innerText = `${student.company} ${student.role}`;
+            document.getElementById('modal-id').innerText = student.id;
+            
+            const phoneEl = document.getElementById('modal-phone');
+            phoneEl.href = `tel:${student.phone}`;
+            document.getElementById('modal-phone-text').innerText = student.phone;
+            
+            document.getElementById('modal-birth').innerText = student.birth;
+            document.getElementById('modal-profile').innerHTML = student.profile;
+
+            // 워크숍 참석 뱃지 표시 여부
+            const workshopBadge = document.getElementById('modal-workshop-badge');
+            if (student.workshop === '참석' || student.workshop === '참석(대참)') {
+                workshopBadge.innerHTML = `<span class="text-[10px] px-2 py-0.5 bg-purple-100 border border-purple-200 rounded-full text-purple-700 font-bold">워크숍 ${student.workshop}</span>`;
+                workshopBadge.classList.remove('hidden');
+            } else {
+                workshopBadge.classList.add('hidden');
+            }
+
+            // 모달창 띄우기 (hidden 제거 후 flex 추가)
+            const modal = document.getElementById('student-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            
+            // 모달 오픈 시 배경 스크롤 방지
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeStudentModal() {
+            const modal = document.getElementById('student-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            
+            // 스크롤 방지 해제
+            document.body.style.overflow = '';
+        }
+
+        // --- 이미지 확대 보기 제어 함수 ---
+        function openImageViewer() {
+            const photoSrc = document.getElementById('modal-photo').src;
+            document.getElementById('large-viewer-image').src = photoSrc;
+            
+            const viewer = document.getElementById('image-viewer-modal');
+            viewer.classList.remove('hidden');
+            viewer.classList.add('flex');
+        }
+
+        function closeImageViewer() {
+            const viewer = document.getElementById('image-viewer-modal');
+            viewer.classList.add('hidden');
+            viewer.classList.remove('flex');
+        }
+
+        window.onload = initializeData;
+    </script>
+</body>
+</html>
